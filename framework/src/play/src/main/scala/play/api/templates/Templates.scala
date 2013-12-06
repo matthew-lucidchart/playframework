@@ -4,33 +4,48 @@ import play.api.mvc._
 import play.templates._
 
 /**
- * Content type used in default HTML templates.
- *
- * @param buffer the HTML text
+ * Appendable content using a StringBuilder.
+ * @param elements StringBuilder to use
+ * @tparam A self-type
  */
-class Html(val buffer: StringBuilder) extends Appendable[Html] with Content with play.mvc.Content {
+abstract class BufferedContent[A <: BufferedContent[A]](protected val elements: TraversableOnce[A], protected val text: String) extends Appendable[A] with Content with play.mvc.Content { this: A =>
+  protected def buildString(builder: StringBuilder) {
+    if (!elements.isEmpty) {
+      elements.foreach { e =>
+        e.buildString(builder)
+      }
+    }
+    else {
+      builder.append(text)
+    }
+  }
 
   /**
-   * Appends another Html fragment to this, modifying this.
+   * This should only ever be called at the top level element
+   * to avoid unneeded memory allocation.
    */
-  def +=(other: Html): Html = {
-    buffer.append(other.buffer)
-    this
+  private lazy val builtBody = {
+    val builder = new StringBuilder()
+    buildString(builder)
+    builder.toString
   }
 
-  @deprecated(message="Use += method instead.", since="2012/12")
-  def +(other: Html): Html = {
-    this += other
-  }
+  override def toString = builtBody
 
-  override def toString = buffer.toString
+  def body = builtBody
+}
+
+/**
+ * Content type used in default HTML templates.
+ */
+class Html private(elements: TraversableOnce[Html], text: String) extends BufferedContent[Html](elements, text) {
+  def this(text: String) = this(Nil, text)
+  def this(elements: TraversableOnce[Html]) = this(elements, "")
 
   /**
    * Content type of HTML (`text/html`).
    */
   def contentType: String = "text/html"
-
-  def body: String = toString
 
 }
 
@@ -43,13 +58,8 @@ object Html {
    * Creates an HTML fragment with initial content specified.
    */
   def apply(text: String): Html = {
-    new Html(new StringBuilder(text))
+    new Html(text)
   }
-
-  /**
-   * Creates an empty HTML fragment.
-   */
-  def empty: Html = new Html(new StringBuilder)
 }
 
 /**
@@ -77,8 +87,18 @@ object HtmlFormat extends Format[Html] {
       case '&' => sb.append("&amp;")
       case c => sb += c
     }
-    new Html(sb)
+    new Html(sb.toString)
   }
+
+  /**
+   * Generate an empty HTML fragment
+   */
+  val empty: Html = new Html("")
+
+  /**
+   * Create an HTML Fragment that holds other fragments.
+   */
+  def fill(elements: TraversableOnce[Html]): Html = new Html(elements)
 
 }
 
@@ -87,30 +107,14 @@ object HtmlFormat extends Format[Html] {
  *
  * @param text The plain text.
  */
-class Txt(text: String) extends Appendable[Txt] with Content with play.mvc.Content {
-  private val buffer = new StringBuilder(text)
-
-  /**
-   * Appends another text fragment to this, modifying this.
-   */
-  def +=(other: Txt): Txt = {
-    buffer.append(other.buffer)
-    this
-  }
-
-  @deprecated(message="Use += method instead.", since="2012/12")
-  def +(other: Txt): Txt = {
-    this += other
-  }
-
-  override def toString = buffer.toString
+class Txt private(elements: TraversableOnce[Txt], text: String) extends BufferedContent[Txt](elements, text) {
+  def this(text: String) = this(Nil, text)
+  def this(elements: TraversableOnce[Txt]) = this(elements, "")
 
   /**
    * Content type of text (`text/plain`).
    */
   def contentType = "text/plain"
-
-  def body = toString
 
 }
 
@@ -125,12 +129,6 @@ object Txt {
   def apply(text: String): Txt = {
     new Txt(text)
   }
-
-
-  /**
-   * Creates an empty text fragment.
-   */
-  def empty = new Txt("")
 
 }
 
@@ -149,6 +147,16 @@ object TxtFormat extends Format[Txt] {
    */
   def escape(text: String) = Txt(text)
 
+  /**
+   * Generate an empty Txt fragment
+   */
+  val empty: Txt = new Txt("")
+
+  /**
+   * Create an Txt Fragment that holds other fragments.
+   */
+  def fill(elements: TraversableOnce[Txt]): Txt = new Txt(elements)
+
 }
 
 /**
@@ -156,30 +164,14 @@ object TxtFormat extends Format[Txt] {
  *
  * @param text the plain xml text
  */
-class Xml(text: String) extends Appendable[Xml] with Content with play.mvc.Content {
-  private val buffer = new StringBuilder(text)
-
-  /**
-   * Appends another XML fragment to this, modifying this.
-   */
-  def +=(other: Xml): Xml = {
-    buffer.append(other.buffer)
-    this
-  }
-
-  @deprecated(message="Use += method instead.", since="2012/12")
-  def +(other: Xml): Xml = {
-    this += other
-  }
-
-  override def toString = buffer.toString
+class Xml private(elements: TraversableOnce[Xml], text: String) extends BufferedContent[Xml](elements, text) {
+  def this(text: String) = this(Nil, text)
+  def this(elements: TraversableOnce[Xml]) = this(elements, "")
 
   /**
    * Content type of XML (`text/xml`).
    */
   def contentType = "text/xml"
-
-  def body = toString
 
 }
 
@@ -194,11 +186,6 @@ object Xml {
   def apply(text: String): Xml = {
     new Xml(text)
   }
-
-  /**
-   * Create an empty XML fragment.
-   */
-  def empty = new Xml("")
 
 }
 
@@ -216,6 +203,16 @@ object XmlFormat extends Format[Xml] {
    * Creates an escaped XML fragment.
    */
   def escape(text: String) = Xml(org.apache.commons.lang3.StringEscapeUtils.escapeXml(text))
+
+  /**
+   * Generate an empty XML fragment
+   */
+  val empty: Xml = new Xml("")
+
+  /**
+   * Create an XML Fragment that holds other fragments.
+   */
+  def fill(elements: TraversableOnce[Xml]): Xml = new Xml(elements)
 
 }
 
